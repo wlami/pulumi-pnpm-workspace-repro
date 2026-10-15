@@ -97,7 +97,8 @@ with `cmd.Dir` set to the Pulumi project directory. On pnpm 11 that setting is s
 is already part of a workspace, even though `npm.FindWorkspaceRoot` in `sdk/nodejs/npm/workspaces.go`
 - same package, and what `pulumi install` uses to find the root - does exactly that walk-up.
 
-It is recreated on **every** `pulumi package add`, so it cannot simply be deleted once. It also
+It is recreated by **every** command that links the SDK - `pulumi package add`, and `pulumi install`
+once the package is registered in `Pulumi.yaml` (see below) - so it cannot simply be deleted once. It also
 copies the effective root configuration down into the project file, because `pnpm config get` reads
 the effective config from the root and `--location project` then writes the merged result locally -
 that is where the `protobufjs: false` above comes from.
@@ -141,16 +142,46 @@ allowBuilds:
 
 ```bash
 rm packages/infra/pnpm-workspace.yaml
-pulumi install    # succeeds, postinstall runs, no second file is created
+pulumi install    # succeeds, postinstall runs
 ```
 
 With that approval in place `pulumi package add random` also succeeds (`Added package random`), but
 it still writes `packages/infra/pnpm-workspace.yaml` on the way through - now with both the key it
-generates and the root key it merged down. So the deletion is not a one-off repair: it is needed
-after every `pulumi package add`.
+generates and the root key it merged down. `pulumi install` recreates it too. So the deletion is not
+a one-off repair: it is needed after every command that links the SDK.
 
-`pulumi install` is unaffected by both faults - it calls `FindWorkspaceRoot` and does not link - so
-only `pulumi package add` needs the cleanup.
+## `pulumi install` is affected the same way
+
+`pulumi package add` registers the package in `Pulumi.yaml`:
+
+```yaml
+packages:
+  random: random@4.21.2
+```
+
+From then on `pulumi install` regenerates and **links** that SDK, so it runs the same
+`allowBuildScripts` path and hits both faults. A plain `pulumi install` is therefore enough on its
+own - the project does not have to run `pulumi package add` at all. That is the case that matters in
+practice: a teammate or a CI job clones a repository whose `Pulumi.yaml` already has `packages:`, and
+the standard install fails.
+
+To see it without `pulumi package add`, add the two lines above to `packages/infra/Pulumi.yaml` on a
+fresh clone:
+
+```bash
+pnpm install
+cd packages/infra
+pulumi install
+```
+
+```
+[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: @pulumi/random@file:packages/infra/sdks/random
+error: installing dependencies: exit status 1
+```
+
+`packages/infra/pnpm-workspace.yaml` is created here as well. `pulumi install` does call
+`FindWorkspaceRoot` for the install step itself - that is where `Detected workspace root at ...` in
+the output comes from - but the linking step that follows does not use it.
 
 ## Adjacent: `protobufjs` is not allowlisted outside `pulumi new`
 
