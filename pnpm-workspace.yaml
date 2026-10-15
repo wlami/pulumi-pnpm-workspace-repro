@@ -1,2 +1,9 @@
 packages:
   - "packages/*"
+
+# `pulumi new` writes this entry for a pnpm project; a project it did not create
+# has to add it by hand, or protobufjs (a dependency of @pulumi/pulumi) blocks
+# the install on pnpm 11 before this repro gets anywhere. See the last section
+# of the README.
+allowBuilds:
+  protobufjs: false
