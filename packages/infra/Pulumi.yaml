@@ -1,0 +1,6 @@
+name: infra
+runtime:
+  name: nodejs
+  options:
+    packagemanager: pnpm
+description: Minimal repro - pulumi package add writes a second pnpm-workspace.yaml
